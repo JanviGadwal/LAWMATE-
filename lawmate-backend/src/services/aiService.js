@@ -1,0 +1,158 @@
+const groqService = require('./groqService');
+
+exports.generateLegalInsight = async (queryData) => {
+  const { category, subcategory, description, ruleDecision } = queryData;
+
+  const prompt = `
+    You are an expert legal AI assistant for Indian Law. 
+    Analyze the following legal query.
+
+    Category: ${category}
+    Subcategory: ${subcategory}
+    User Description: "${description}"
+    Rule-Based Insight: ${ruleDecision?.legalNature || 'General Inquiry'}
+
+    Format your response in valid JSON with the following keys:
+    {
+      "legalInsight": "A clear, professional explanation of the legal situation.",
+      "relevantActs": ["List of specific Indian Penal Code (IPC) sections, acts, or laws relevant to this case."],
+      "recommendedActions": ["Step-by-step actionable advice for the user to take immediately."],
+      "severity": "Low/Medium/High assessment of the urgency."
+    }
+
+    Ensure the tone is empathetic but professional.
+  `;
+
+  const messages = [
+    { role: "system", content: "You are a helpful legal assistant. Always output valid JSON." },
+    { role: "user", content: prompt }
+  ];
+
+  try {
+    const aiResponseRaw = await groqService.getChatCompletion(messages);
+
+    // Attempt to parse JSON
+    let aiResponse = {};
+    const jsonStartIndex = aiResponseRaw.indexOf('{');
+    const jsonEndIndex = aiResponseRaw.lastIndexOf('}');
+
+    if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
+      const jsonString = aiResponseRaw.substring(jsonStartIndex, jsonEndIndex + 1);
+      try {
+        aiResponse = JSON.parse(jsonString);
+      } catch (parseError) {
+        console.error("AI JSON Parse Error:", parseError.message);
+        throw new Error("Failed to parse AI response");
+      }
+    } else {
+      throw new Error("No JSON found in AI response");
+    }
+
+    return aiResponse;
+
+  } catch (error) {
+    console.error("AI Service Error:", error.message);
+    // Fallback response
+    return {
+      legalInsight: "We could not generate a specific AI analysis at this moment. Please refer to the standard legal guidance provided.",
+      relevantActs: [],
+      recommendedActions: ["Consult a verified advocate."],
+      severity: "Unknown",
+      error: true
+    };
+  }
+};
+exports.generateLegalResponse = async (question) => {
+  const prompt = `
+      You are an expert legal AI assistant strictly for Indian Law. 
+      A user has asked: "${question}"
+
+      **IMPORTANT GUIDELINES - YOU MUST FOLLOW THESE STRICTLY:**
+      1. You must ONLY answer questions related to law, legal matters, legal rights, legal procedures, acts, sections, court processes, legal disputes, crimes, civil matters, constitutional rights, family law, property law, criminal law, corporate law, labor law, consumer protection, or any other topic that falls under the legal domain.
+      2. If the user's question is NOT related to law or legal matters (for example: cooking, recipes, general knowledge, science, math, technology, coding, entertainment, sports, health/medical advice, weather, travel tips, personal opinions, creative writing, etc.), you MUST politely decline and respond ONLY with:
+         "I'm sorry, but I can only assist with legal questions related to Indian Law. Your question doesn't appear to be related to a legal matter. Please ask me a question about your legal rights, legal procedures, laws, acts, or any legal concern, and I'll be happy to help!"
+      3. Do NOT answer any question that is not directly related to law, even if you know the answer.
+      4. Do NOT try to find a legal angle in clearly non-legal questions. Only answer genuinely legal queries.
+      5. If the question is legal in nature, provide a clear, professional, and empathetic explanation of the legal principles involved.
+      6. Include specific Indian Acts, Sections, or relevant laws if applicable.
+      7. Suggest step-by-step actions the user can take.
+      8. Keep your response concise but helpful.
+    `;
+
+  const messages = [
+    { role: "system", content: "You are a legal-only AI assistant for Indian Law. You must NEVER answer non-legal questions. If a user asks anything unrelated to law, legal rights, legal procedures, acts, or legal matters, you must politely decline and ask them to submit a legal question instead. You must not answer questions about cooking, science, math, coding, entertainment, health, sports, general knowledge, or any other non-legal topic under any circumstances." },
+    { role: "user", content: prompt }
+  ];
+
+  try {
+    const response = await groqService.getChatCompletion(messages);
+    return response;
+  } catch (error) {
+    console.error("AI Response Error:", error.message);
+    return "We are currently experiencing high traffic. Please try again in a moment.";
+  }
+};
+
+exports.generateAdvocateComparison = async (advA, advB, useCase) => {
+  const prompt = `
+    You are an expert legal matchmaking AI.
+    A user has requested a comparison between two advocates for their specific legal situation.
+
+    User's Specific Legal Situation / Use Case:
+    "${useCase || 'General legal advice'}"
+
+    ${advA.name}:
+    Experience: ${advA.experience} years
+    Consulting Fee: ₹${advA.consultationFee || 'TBD'} and Hearing Charge: ₹${advA.hourlyRate || 'TBD'}/hr
+    Win Rate Track Record: ${advA.casesWon} wins out of ${advA.casesHandled} cases
+    Specializations: ${advA.specialization?.join(', ') || 'General Law'}
+
+    ${advB.name}:
+    Experience: ${advB.experience} years
+    Consulting Fee: ₹${advB.consultationFee || 'TBD'} and Hearing Charge: ₹${advB.hourlyRate || 'TBD'}/hr
+    Win Rate Track Record: ${advB.casesWon} wins out of ${advB.casesHandled} cases
+    Specializations: ${advB.specialization?.join(', ') || 'General Law'}
+
+    IMPORTANT: Always use the advocate's actual name (${advA.name} or ${advB.name}) in your response. Never say "Advocate A" or "Advocate B".
+
+    Format your response in valid JSON with EXACTLY the following keys:
+    {
+      "keyDifferences": ["Direct factual difference using real names, e.g. '${advA.name} has X years more experience'"],
+      "summary": "A balanced 2-sentence summary using real names comparing their suitability.",
+      "recommendation": "The exact name of the recommended advocate (${advA.name} or ${advB.name}), or 'Tie' if equally matched.",
+      "reasoning": "A direct hiring recommendation sentence starting with 'You should hire [name] because ...' explaining why they are the best fit for the user's specific situation."
+    }
+  `;
+
+  const messages = [
+    { role: "system", content: "You are an analytical legal matchmaking AI. Always output valid JSON." },
+    { role: "user", content: prompt }
+  ];
+
+  try {
+    const aiResponseRaw = await groqService.getChatCompletion(messages);
+
+    let aiResponse = {};
+    const jsonStartIndex = aiResponseRaw.indexOf('{');
+    const jsonEndIndex = aiResponseRaw.lastIndexOf('}');
+
+    if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
+      const jsonString = aiResponseRaw.substring(jsonStartIndex, jsonEndIndex + 1);
+      aiResponse = JSON.parse(jsonString);
+    } else {
+      throw new Error("No JSON found in AI response");
+    }
+
+    return aiResponse;
+
+  } catch (error) {
+    console.error("AI Advocate Comparison Error:", error.message);
+    return {
+      keyDifferences: ["Could not load dynamic comparison"],
+      summary: "We could not generate an AI analysis at this moment due to high traffic.",
+      recommendation: "N/A",
+      reasoning: "Please compare their stats manually in the grid.",
+      error: true
+    };
+  }
+};
